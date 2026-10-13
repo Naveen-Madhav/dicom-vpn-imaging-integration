@@ -1,0 +1,44 @@
+graph TB
+    subgraph SiteAlpha ["Remote Clinic - Site Alpha (10.100.10.0/24)"]
+        CT["CT Scanner<br/>AET: CT_SCANNER_01<br/>10.100.10.21:11112"]
+        MR["MRI Scanner<br/>AET: MR_SCANNER_01<br/>10.100.10.22:11112"]
+        XR["X-Ray Room<br/>AET: XR_ROOM_01<br/>10.100.10.23:11112"]
+        EDGE_GW["Edge DICOM Gateway / Cache<br/>AET: EDGE_DICOM_GW<br/>10.100.10.15:11112"]
+        REMOTE_VPN["Remote VPN Gateway<br/>LAN: 10.100.10.1 (eth0)<br/>WAN: 198.51.100.2 (eth1)<br/>MSS Clamped: 1360"]
+
+        CT -->|DICOM C-STORE| EDGE_GW
+        MR -->|DICOM C-STORE| EDGE_GW
+        XR -->|DICOM C-STORE| EDGE_GW
+        CT -.->|Direct Store| REMOTE_VPN
+        EDGE_GW -->|Aggregated Forward| REMOTE_VPN
+    end
+
+    subgraph WAN ["Simulated Public Internet / WAN Transit (198.51.100.0/24)"]
+        TUNNEL[/"🔒 IPsec IKEv2 ESP Tunnel (Protocol 50)<br/>AES-256-GCM / SHA-384 / DH Group 19 (ECP-384)<br/>NAT-T UDP 4500 | ISAKMP UDP 500"/]
+    end
+
+    subgraph SiteCentral ["Hospital Central Data Center - Site Central (10.200.20.0/24)"]
+        CENTRAL_VPN["Central Perimeter VPN Gateway<br/>WAN: 198.51.100.1 (eth1)<br/>LAN: 10.200.20.1 (eth0)<br/>Firewall Stateful Inspection"]
+        CENTRAL_ROUTER["Central DICOM Router / Ingress Proxy<br/>AET: CENTRAL_ROUTER<br/>10.200.20.10:11112"]
+        CENTRAL_PACS[("Enterprise PACS Server (Orthanc)<br/>AET: CENTRAL_PACS<br/>10.200.20.50:4242<br/>DICOMweb: 8042")]
+        VNA[("Enterprise VNA / Archive<br/>AET: CORP_VNA<br/>10.200.20.60:11112")]
+        RAD["Diagnostic Radiologist Workstation<br/>AET: RAD_DESK_01<br/>10.200.20.101:11114"]
+
+        CENTRAL_VPN -->|Decapsulated Plaintext| CENTRAL_ROUTER
+        CENTRAL_ROUTER -->|Rule-Based Ingestion| CENTRAL_PACS
+        CENTRAL_ROUTER -.->|Long-Term Archive| VNA
+        CENTRAL_PACS <-->|C-FIND / C-MOVE| RAD
+    end
+
+    REMOTE_VPN <==> TUNNEL
+    TUNNEL <==> CENTRAL_VPN
+
+    classDef site fill:#e1f5fe,stroke:#0288d1,stroke-width:2px;
+    classDef wan fill:#fff3e0,stroke:#f57c00,stroke-width:2px;
+    classDef pacs fill:#e8f5e9,stroke:#388e3c,stroke-width:2px;
+    classDef vpn fill:#fce4ec,stroke:#c2185b,stroke-width:2px;
+
+    class SiteAlpha,SiteCentral site;
+    class WAN wan;
+    class CENTRAL_PACS,VNA pacs;
+    class REMOTE_VPN,CENTRAL_VPN vpn;

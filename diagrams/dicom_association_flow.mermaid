@@ -1,0 +1,34 @@
+sequenceDiagram
+    autonumber
+    participant Modality as Modality / SCU<br/>(CT_SCANNER_01<br/>10.100.10.21)
+    participant EdgeGW as Remote Edge VPN<br/>(10.100.10.1)
+    participant CentralGW as Central DC VPN<br/>(10.200.20.1)
+    participant PACS as Central PACS / SCP<br/>(CENTRAL_PACS<br/>10.200.20.50:4242)
+
+    Note over Modality,PACS: Phase 1: Transport & DICOM Upper Layer Association Negotiation
+    Modality->>EdgeGW: TCP SYN (Dst Port 4242)
+    EdgeGW->>CentralGW: IPsec ESP Encapsulated TCP SYN (WAN Transit)
+    CentralGW->>PACS: TCP SYN (Decapsulated)
+    PACS-->>CentralGW: TCP SYN-ACK
+    CentralGW-->>EdgeGW: IPsec ESP Encapsulated TCP SYN-ACK
+    EdgeGW-->>Modality: TCP SYN-ACK (MSS Clamped to 1360)
+    Modality->>PACS: TCP ACK (3-Way Handshake Established)
+
+    Modality->>PACS: DICOM A-ASSOCIATE-RQ<br/>• Calling AET: CT_SCANNER_01<br/>• Called AET: CENTRAL_PACS<br/>• Proposed SOP: CT Image Storage<br/>• Transfer Syntaxes: Explicit VR Little Endian, JPEG Lossless
+    Note over PACS: Verifies Calling AET against<br/>Authorized Modalities Registry
+    PACS-->>Modality: DICOM A-ASSOCIATE-AC<br/>• Accepted Presentation Context ID: 1<br/>• Selected Syntax: Explicit VR Little Endian<br/>• Max PDU Length: 65536 bytes
+
+    Note over Modality,PACS: Phase 2: DICOM C-STORE Data Transfer
+    Modality->>PACS: DICOM C-STORE-RQ (P-DATA-TF PDU 1/N - Dataset Header)
+    Modality->>PACS: DICOM C-STORE-RQ (P-DATA-TF PDU 2/N - Pixel Data Chunks)
+    Note over Modality,PACS: High throughput streaming of pixel data over IPsec tunnel
+    Modality->>PACS: DICOM C-STORE-RQ (P-DATA-TF PDU N/N - Final Chunk)
+
+    Note over PACS: Validates CRC, parses DICOM tags,<br/>indexes study in database, commits to archive
+    PACS-->>Modality: DICOM C-STORE-RSP<br/>• Status: 0x0000 (Success)<br/>• Affected SOP Instance UID
+
+    Note over Modality,PACS: Phase 3: Association Release
+    Modality->>PACS: DICOM A-RELEASE-RQ
+    PACS-->>Modality: DICOM A-RELEASE-RP
+    Modality->>PACS: TCP FIN-ACK (Graceful teardown)
+    PACS-->>Modality: TCP FIN-ACK

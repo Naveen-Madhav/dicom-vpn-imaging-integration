@@ -1,0 +1,69 @@
+========================================================================================================================
+             IPSEC TUNNEL MODE PACKET ENCAPSULATION & MTU/MSS OVERHEAD BREAKDOWN
+========================================================================================================================
+
+Original DICOM IP Packet (created on modality host: 10.100.10.21)
+------------------------------------------------------------------------------------------------------------------------
+| Original IP Header | TCP Header | DICOM Upper Layer Header | DICOM Command / Dataset / Pixel Payload |
+| (20 Bytes)         | (20 Bytes) | (6 Bytes PDU Header)     | (Up to 1414 Bytes per segment)          |
+------------------------------------------------------------------------------------------------------------------------
+|<------------------------------------------ Total MTU: 1460 to 1500 Bytes ------------------------------------------>|
+
+Encapsulated IPsec ESP Packet Transmitted Across Simulated WAN (198.51.100.0/24)
+------------------------------------------------------------------------------------------------------------------------
+| New Outer | ESP Header | IV      | [ORIGINAL DICOM IP PACKET (ENCRYPTED CIPHERTEXT)] | ESP Pad  | Pad | Next | ESP ICV / |
+| IP Header | (SPI+Seq)  | (GCM)   | Original IP + TCP + DICOM Payload                 | (0-15 B) | Len | Hdr  | Auth Tag  |
+| 20 Bytes  | 8 Bytes    | 8 Bytes | Encrypted Inner Packet                            | Variable | 1 B | 1 B  | 16 Bytes  |
+------------------------------------------------------------------------------------------------------------------------
+|<---------------- New IP Header + ESP Encapsulation Overhead (Approx 54 - 70 Bytes) ---------------->|
+|<------------------------------------ Must Not Exceed Physical WAN MTU: 1500 Bytes --------------------------------->|
+
+========================================================================================================================
+                                     DETAILED OVERHEAD CALCULATION (AES-256-GCM)
+========================================================================================================================
+
+Layer / Header Element                                                  Size (Bytes)   Cumulative Running Total
+------------------------------------------------------------------------------------------------------------------------
+Physical WAN MTU                                                               1500           1500 (Maximum Boundary)
+- New Outer IPv4 Header (WAN Gateway-to-Gateway: 198.51.100.2 -> .1)             20           1480
+- ESP Header: Security Parameters Index (SPI: 4B) + Sequence Number (4B)          8           1472
+- Initialization Vector (IV / Nonce for AES-GCM)                                  8           1464
+- ESP Trailer: Padding (0 to 15 bytes to satisfy 4-byte / cipher block boundary)  2-4         1460
+- ESP Trailer: Pad Length (1B) + Next Header (1B, e.g., Protocol 4 - IPv4)        2           1458
+- ESP Authentication ICV (Integrity Check Value / GCM Tag)                       16           1442
+------------------------------------------------------------------------------------------------------------------------
+Maximum Allowable Inner IP MTU (Cleartext Packet Inside Tunnel):                1442 Bytes (Common standard: 1436-1440)
+- Inner IPv4 Header (Modality to PACS: 10.100.10.21 -> 10.200.20.50)             20           1422
+- Inner TCP Header (without options)                                             20           1402
+- TCP Options (Timestamps, SACK, Window Scale - typically up to 12-20 Bytes)     12           1390
+------------------------------------------------------------------------------------------------------------------------
+RECOMMENDED SAFE TCP MSS (Maximum Segment Size) FOR DICOM TRAFFIC:              1360 Bytes
+(Clamping MSS to 1360 prevents path MTU discovery blackholes and fragmentation for both IPv4 and NAT-T UDP 4500)
+
+========================================================================================================================
+                               NAT TRAVERSAL (NAT-T) ADDITIONAL OVERHEAD (IF APPLICABLE)
+========================================================================================================================
+When NAT Traversal is active (UDP Port 4500):
+- An 8-byte UDP header is inserted between the Outer IP Header and the ESP Header.
+- Outer IP (20B) + UDP 4500 (8B) + ESP (8B) + IV (8B) + Payload + Pad (2B) + PadLen/NextHdr (2B) + ICV (16B)
+- Total encapsulation overhead increases to ~64 - 74 bytes.
+- Inner TCP MSS must be clamped to <= 1360 bytes.
+
+========================================================================================================================
+                                 WHAT HAPPENS IN A PATH MTU (PMTU) BLACKHOLE?
+========================================================================================================================
+1. Modality negotiates TCP session with PACS. SYN packet is 60 bytes (well below MTU). Connection establishes cleanly.
+2. Modality sends DICOM A-ASSOCIATE-RQ (approx 250 bytes). PACS responds A-ASSOCIATE-AC. Association accepted!
+3. Modality executes C-ECHO-RQ (approx 120 bytes). PACS responds C-ECHO-RSP. C-ECHO test passes!
+4. Modality starts C-STORE-RQ with high-resolution CT study. Modality's TCP stack segments the image data into full-sized
+   packets with TCP payload = 1460 bytes (DF bit set = 1). Total packet size = 1500 bytes.
+5. Edge VPN Gateway attempts to encapsulate 1500-byte inner packet into ESP. Total outer size = 1564 bytes.
+6. The physical WAN interface MTU is 1500 bytes. The packet exceeds MTU.
+7. Because DF (Don't Fragment) bit is set, the gateway drops the packet.
+8. If ICMP Type 3 Code 4 ("Destination Unreachable, Fragmentation Needed and DF Set") is blocked by firewalls, the Modality
+   never learns that the packet was too large.
+9. SYMPTOM: C-ECHO always succeeds. C-STORE hangs indefinitely, eventually timing out with a broken TCP pipe!
+10. SOLUTION: Enforce TCP MSS Clamping on the VPN gateways:
+    iptables -t mangle -A FORWARD -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --clamp-mss-to-pmtu
+    or:
+    iptables -t mangle -A FORWARD -p tcp --tcp-flags SYN,RST SYN -j TCPMSS --set-mss 1360

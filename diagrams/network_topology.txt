@@ -1,0 +1,94 @@
+========================================================================================================================
+             ENTERPRISE TELERADIOLOGY SITE-TO-SITE IPsec VPN & DICOM ROUTING TOPOLOGY
+========================================================================================================================
+
+ +-------------------------------------------------------+       +-------------------------------------------------------+
+ |  REMOTE CLINIC / IMAGING CENTER (Site Alpha)          |       |  ENTERPRISE HOSPITAL DATA CENTER (Site Central)       |
+ |  Local Area Network (LAN): 10.100.10.0/24             |       |  Data Center Network (LAN): 10.200.20.0/24            |
+ |                                                       |       |                                                       |
+ |  +-------------------------------------------------+  |       |  +-------------------------------------------------+  |
+ |  | Modality: CT Scanner                            |  |       |  | Core Enterprise PACS Server                     |  |
+ |  | AE Title: CT_SCANNER_01                         |  |       |  | AE Title: CENTRAL_PACS                          |  |
+ |  | IP Address: 10.100.10.21                        |  |       |  | IP Address: 10.200.20.50                        |  |
+ |  | Listening Port: 11112                           |  |       |  | DICOM Port: 4242 / 104                          |  |
+ |  +-------------------------------------------------+  |       |  | DICOMweb HTTP/REST Port: 8042                   |  |
+ |                           |                           |       |  +-------------------------------------------------+  |
+ |  +-------------------------------------------------+  |       |                           ^                           |
+ |  | Modality: MRI Scanner                           |  |       |                           | Forwarded Studies         |
+ |  | AE Title: MR_SCANNER_01                         |  |       |  +-------------------------------------------------+  |
+ |  | IP Address: 10.100.10.22                        |  |       |  | Central DICOM Router / Ingress Proxy            |  |
+ |  | Listening Port: 11112                           |  |       |  | AE Title: CENTRAL_ROUTER                        |  |
+ |  +-------------------------------------------------+  |       |  | IP Address: 10.200.20.10                        |  |
+ |                           |                           |       |  | Listening Port: 11112                           |  |
+ |  +-------------------------------------------------+  |       |  +-------------------------------------------------+  |
+ |  | Edge DICOM Gateway / Cache                      |  |       |                           ^                           |
+ |  | AE Title: EDGE_DICOM_GW                         |  |       |                           | (Encrypted DICOM Traffic) |
+ |  | IP Address: 10.100.10.15                        |  |       |                           |                           |
+ |  | Listening Port: 11112                           |  |       |  +-------------------------------------------------+  |
+ |  +-------------------------------------------------+  |       |  | Diagnostic Radiologist Workstation              |  |
+ |                           |                           |       |  | AE Title: RAD_DESK_01                           |  |
+ |                           v                           |       |  | IP Address: 10.200.20.101                       |  |
+ |  +-------------------------------------------------+  |       |  | Query/Retrieve Port: 11114                      |  |
+ |  | Remote Edge VPN Gateway (Linux / strongSwan)    |  |       |  +-------------------------------------------------+  |
+ |  | Internal LAN Interface (eth0): 10.100.10.1      |  |       |                           ^                           |
+ |  | MSS Clamping: 1360 bytes (Prevents PMTU Drops)  |  |       |                           |                           |
+ |  | Public WAN Interface (eth1): 198.51.100.2       |  |       |  +-------------------------------------------------+  |
+ |  +-------------------------------------------------+  |       |  | Central Perimeter VPN Gateway (strongSwan / FW) |  |
+ |                           |                           |       |  | Internal LAN Interface (eth0): 10.200.20.1      |  |
+ +---------------------------|---------------------------+       |  | Public WAN Interface (eth1): 198.51.100.1       |  |
+                             |                                   |  +-------------------------------------------------+  |
+                             |                                   +---------------------------|---------------------------+
+                             |                                                               |
+                             v                                                               v
+                 +-------------------------------------------------------------------------------+
+                 |                   SIMULATED PUBLIC INTERNET / WAN TRANSIT                     |
+                 |                   Subnet: 198.51.100.0/24  |  Physical MTU: 1500              |
+                 |                                                                               |
+                 |       <===============================================================>       |
+                 |             IKEv2 / IPsec Encapsulating Security Payload (ESP)                |
+                 |             Phase 1: AES-256-GCM / PRF-SHA384 / DH Group 19 (ECP-384)        |
+                 |             Phase 2: AES-256-GCM-128 / ECP-384 (ESP Protocol 50)              |
+                 |             NAT Traversal: UDP 4500  |  ISAKMP Key Exchange: UDP 500          |
+                 |             Encapsulated Traffic: 10.100.10.0/24 <---> 10.200.20.0/24        |
+                 +-------------------------------------------------------------------------------+
+
+========================================================================================================================
+                                     LOGICAL DICOM APPLICATION DATA PATH
+========================================================================================================================
+
+  [CT / MR Modality] (Site Alpha)
+          |
+          | 1. DICOM A-ASSOCIATE-RQ (Calling: CT_SCANNER_01, Called: CENTRAL_ROUTER)
+          | 2. TCP Port 11112 Handshake
+          v
+  [Edge VPN Gateway] (10.100.10.1)
+          |
+          | 3. Routing Match: Destination 10.200.20.10 matches IPsec Security Policy (SP)
+          | 4. TCP MSS Clamping enforced (MSS adjusted from 1460 to 1360 bytes)
+          | 5. ESP Encapsulation (Outer IP: 198.51.100.2 -> 198.51.100.1, Protocol 50)
+          v
+  [WAN Transit: 198.51.100.0/24]
+          |
+          | 6. Encrypted ciphertext passes over public transit
+          v
+  [Central VPN Gateway] (198.51.100.1)
+          |
+          | 7. Inbound ESP Decapsulation & Integrity Verification (HMAC / GCM Tag)
+          | 8. Inner IP Header Extracted: 10.100.10.21 -> 10.200.20.10
+          | 9. Firewall Ingress Verification (Allow TCP 11112 from 10.100.10.0/24)
+          v
+  [Central DICOM Router] (10.200.20.10:11112)
+          |
+          | 10. Parses DICOM Command Set (C-STORE-RQ)
+          | 11. Inspects SOP Class UID, Study Priority, and Body Part
+          | 12. Opens Downstream DICOM Association to Central PACS (10.200.20.50:4242)
+          v
+  [Central Enterprise PACS] (10.200.20.50:4242 - CENTRAL_PACS)
+          |
+          | 13. Stores Image Instance to SQLite/PostgreSQL Database & Storage Archive
+          | 14. Emits DICOM C-STORE-RSP (Status: 0x0000 - Success)
+          | 15. Generates DICOMweb Event Notification (WADO-RS / QIDO-RS)
+          v
+  [Diagnostic Radiologist Workstation] (10.200.20.101 - RAD_DESK_01)
+          |
+          | 16. Queries Study (C-FIND-RQ) & Retrieves Slices (C-MOVE-RQ) for Reporting
