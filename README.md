@@ -2,6 +2,16 @@
 
 A two-site imaging integration lab that pairs DICOM storage and forwarding with an IPsec VPN network design.
 
+## Sample output
+
+Output excerpt from `python scripts/run_local_demo.py` using Python 3.11. This checks the loopback DICOM path.
+
+```text
+PASS: registered calling AE receives C-ECHO success
+PASS: forward 3 CT instances and verify receiver identifiers
+PASS: reject unregistered AE C-ECHO and C-STORE without forwarding
+```
+
 ## Integration problem
 
 Remote imaging systems need to deliver studies to a central PACS without exposing imaging services to an untrusted network. A TCP connection alone does not establish that the calling application entity is permitted, the transfer syntax is supported, or PACS has accepted the instance. This project separates those checks so a failed transfer can be traced to the network, DICOM ingress, or storage boundary.
@@ -91,3 +101,5 @@ Read the [architecture](docs/01_ARCHITECTURE_AND_DESIGN.md), [VPN specification]
 Naveen Madhav | [LinkedIn](https://linkedin.com/in/naveenmadhav)
 
 Licensed under the [MIT License](LICENSE).
+
+**AI assistance:** I defined the project concept, requirements, and validation rule priorities based on my healthcare integration experience. AI coding assistants helped with planning, design exploration, implementation, debugging, testing, and documentation. I take responsibility for reviewing the project, checking its claims, and deciding what to submit.
