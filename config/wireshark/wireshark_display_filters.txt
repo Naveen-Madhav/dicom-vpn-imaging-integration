@@ -1,0 +1,94 @@
+# ==============================================================================
+# Wireshark Display Filter Cheatsheet for DICOM & IPsec Teleradiology
+# Paste these filters directly into Wireshark's display filter bar
+# ==============================================================================
+
+# ------------------------------------------------------------------------------
+# 1. DICOM UPPER LAYER PROTOCOL (DULP) PDU TYPE FILTERS
+# ------------------------------------------------------------------------------
+# Show all DICOM traffic
+dicom
+
+# Show Association Requests (A-ASSOCIATE-RQ)
+dicom.pdu.type == 0x01
+
+# Show Association Accepts (A-ASSOCIATE-AC)
+dicom.pdu.type == 0x02
+
+# Show Association Rejections (A-ASSOCIATE-RJ) - Critical for troubleshooting!
+dicom.pdu.type == 0x03
+
+# Show Data Transfer PDUs (P-DATA-TF)
+dicom.pdu.type == 0x04
+
+# Show Association Release Requests / Responses
+dicom.pdu.type == 0x05 or dicom.pdu.type == 0x06
+
+# Show Association Aborts (A-ABORT)
+dicom.pdu.type == 0x07
+
+# ------------------------------------------------------------------------------
+# 2. DICOM MESSAGE SERVICE ELEMENT (DIMSE) COMMAND FILTERS
+# ------------------------------------------------------------------------------
+# Show C-ECHO (Verification) Requests (0x0030) and Responses (0x8030)
+dicom.command == 0x0030 or dicom.command == 0x8030
+
+# Show C-STORE (Image Storage) Requests (0x0001)
+dicom.command == 0x0001
+
+# Show C-STORE Responses (0x8001)
+dicom.command == 0x8001
+
+# Show C-STORE Responses with Non-Zero (Error or Warning) Status
+dicom.command == 0x8001 and dicom.status != 0x0000
+
+# Show C-FIND (Query) Requests (0x0020) and Responses (0x8020)
+dicom.command == 0x0020 or dicom.command == 0x8020
+
+# Show C-MOVE (Retrieve) Requests (0x0021) and Responses (0x8021)
+dicom.command == 0x0021 or dicom.command == 0x8021
+
+# ------------------------------------------------------------------------------
+# 3. AE TITLE & SOP CLASS FILTERING
+# ------------------------------------------------------------------------------
+# Filter by Calling AE Title (Sender)
+dicom.calling_ae_title contains "CT_SCANNER"
+
+# Filter by Called AE Title (Receiver)
+dicom.called_ae_title == "CENTRAL_PACS"
+
+# Filter by CT Image SOP Class UID (1.2.840.10008.5.1.4.1.1.2)
+dicom.sop_class_uid == "1.2.840.10008.5.1.4.1.1.2"
+
+# Filter by Specific Patient ID
+dicom.patient_id == "PATIENT_99401"
+
+# ------------------------------------------------------------------------------
+# 4. TCP TRANSPORT & PATH MTU / FRAGMENTATION TROUBLESHOOTING
+# ------------------------------------------------------------------------------
+# Show TCP Retransmissions and Fast Retransmissions (High indication of MTU drops)
+tcp.analysis.retransmission or tcp.analysis.fast_retransmission
+
+# Show TCP Zero Window or Window Full alerts (Buffer exhaustion / receiver overwhelmed)
+tcp.analysis.zero_window or tcp.analysis.window_full
+
+# Show TCP Reset (RST) packets terminating DICOM associations
+tcp.flags.reset == 1 and (tcp.port == 4242 or tcp.port == 11112)
+
+# Inspect TCP MSS Clamping in SYN Handshakes
+tcp.flags.syn == 1 and (tcp.port == 4242 or tcp.port == 11112)
+
+# Show ICMP Fragmentation Needed and DF Bit Set (Path MTU Discovery failure)
+icmp.type == 3 and icmp.code == 4
+
+# ------------------------------------------------------------------------------
+# 5. IPSEC & IKEv2 TUNNEL FILTERS
+# ------------------------------------------------------------------------------
+# Show IKEv2 Key Exchange Packets
+isakmp
+
+# Show IKEv2 SA Negotiation Failures / Notify Errors
+isakmp.notify.msg_type
+
+# Show Encapsulating Security Payload (ESP) traffic over WAN
+esp

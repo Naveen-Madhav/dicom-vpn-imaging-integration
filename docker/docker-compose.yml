@@ -1,0 +1,122 @@
+networks:
+  remote_lan:
+    driver: bridge
+    ipam:
+      driver: default
+      config:
+        - subnet: 10.100.10.0/24
+          gateway: 10.100.10.254
+  wan_transit:
+    driver: bridge
+    ipam:
+      driver: default
+      config:
+        - subnet: 198.51.100.0/24
+          gateway: 198.51.100.254
+  central_lan:
+    driver: bridge
+    ipam:
+      driver: default
+      config:
+        - subnet: 10.200.20.0/24
+          gateway: 10.200.20.254
+
+services:
+  remote-modality:
+    build:
+      context: ./remote-modality
+    container_name: remote-modality
+    cap_add:
+      - NET_ADMIN
+    networks:
+      remote_lan:
+        ipv4_address: 10.100.10.21
+    environment:
+      - LOCAL_AET=CT_SCANNER_01
+      - DEFAULT_GATEWAY=10.100.10.1
+      - TARGET_PACS_AET=CENTRAL_PACS
+      - TARGET_PACS_IP=10.200.20.50
+      - TARGET_PACS_PORT=4242
+    volumes:
+      - ../sample_studies:/sample_studies
+    restart: unless-stopped
+
+  remote-vpn-gw:
+    build:
+      context: ./remote-vpn-gw
+    container_name: remote-vpn-gw
+    privileged: true
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+    networks:
+      remote_lan:
+        ipv4_address: 10.100.10.1
+      wan_transit:
+        ipv4_address: 198.51.100.2
+    volumes:
+      - ../config/vpn/remote_swanctl.conf:/etc/swanctl/swanctl.conf:ro
+      - ../config/vpn/remote_ipsec.conf:/etc/ipsec.conf:ro
+      - ../config/firewall/remote_edge_iptables.sh:/root/apply_firewall.sh:ro
+    environment:
+      VPN_PSK: ${VPN_PSK:?VPN_PSK must be supplied at runtime}
+    restart: unless-stopped
+
+  central-vpn-gw:
+    build:
+      context: ./central-vpn-gw
+    container_name: central-vpn-gw
+    privileged: true
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+    networks:
+      wan_transit:
+        ipv4_address: 198.51.100.1
+      central_lan:
+        ipv4_address: 10.200.20.1
+    volumes:
+      - ../config/vpn/central_swanctl.conf:/etc/swanctl/swanctl.conf:ro
+      - ../config/vpn/central_ipsec.conf:/etc/ipsec.conf:ro
+      - ../config/firewall/central_dc_iptables.sh:/root/apply_firewall.sh:ro
+    environment:
+      VPN_PSK: ${VPN_PSK:?VPN_PSK must be supplied at runtime}
+    restart: unless-stopped
+
+  central-router:
+    build:
+      context: ./central-router
+    container_name: central-router
+    networks:
+      central_lan:
+        ipv4_address: 10.200.20.10
+    environment:
+      - DEFAULT_GATEWAY=10.200.20.1
+      - ROUTER_AET=CENTRAL_ROUTER
+      - ROUTER_PORT=11112
+      - DOWNSTREAM_PACS_AET=CENTRAL_PACS
+      - DOWNSTREAM_PACS_IP=10.200.20.50
+      - DOWNSTREAM_PACS_PORT=4242
+    restart: unless-stopped
+
+  central-pacs:
+    build:
+      context: ./central-pacs
+    container_name: central-pacs
+    networks:
+      central_lan:
+        ipv4_address: 10.200.20.50
+    ports:
+      - "127.0.0.1:8042:8042"
+      - "127.0.0.1:4242:4242"
+    environment:
+      - DEFAULT_GATEWAY=10.200.20.1
+    volumes:
+      - ../config/dicom/orthanc_central_pacs.json:/etc/orthanc/orthanc.json:ro
+      - ../config/dicom/orthanc_routing_rules.lua:/etc/orthanc/routing_rules.lua:ro
+      - pacs_storage:/var/lib/orthanc/db
+    restart: unless-stopped
+
+volumes:
+  pacs_storage:
+    driver: local

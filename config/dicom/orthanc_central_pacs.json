@@ -1,0 +1,57 @@
+{
+  "Name": "Central Hospital Enterprise PACS",
+  "StorageDirectory": "/var/lib/orthanc/db",
+  "IndexDirectory": "/var/lib/orthanc/db",
+  "StorageCompression": true,
+  "MaximumStorageSize": 0,
+  "MaximumPatientCount": 0,
+
+  "HttpServerEnabled": true,
+  "RemoteAccessAllowed": false,
+  "HttpPort": 8042,
+  "HttpDescribeErrors": true,
+  "HttpCompressionEnabled": true,
+
+  "DicomServerEnabled": true,
+  "DicomAet": "CENTRAL_PACS",
+  "DicomCheckCalledAet": true,
+  "DicomPort": 4242,
+
+  "DefaultEncoding": "Latin1",
+  "DeflatedTransferSyntaxAccepted": true,
+  "JpegTransferSyntaxAccepted": true,
+  "Jpeg2000TransferSyntaxAccepted": true,
+  "JpegLosslessTransferSyntaxAccepted": true,
+  "RleTransferSyntaxAccepted": true,
+
+  "UnknownSopClassAccepted": false,
+  "DicomAlwaysAllowEcho": false,
+  "DicomAlwaysAllowStore": false,
+  "DicomCheckModalityHost": false,
+
+  "SynchronousCStore": true,
+  "LogExportedInstances": true,
+  "DicomScpTimeout": 60,
+  "DicomScuTimeout": 30,
+  "MaximumPduLength": 65536,
+
+  "DicomModalities": {
+    "CT_SCANNER_01": [ "CT_SCANNER_01", "10.100.10.21", 11112 ],
+    "MR_SCANNER_01": [ "MR_SCANNER_01", "10.100.10.22", 11112 ],
+    "XR_ROOM_01":    [ "XR_ROOM_01",    "10.100.10.23", 11112 ],
+    "EDGE_DICOM_GW": [ "EDGE_DICOM_GW", "10.100.10.15", 11112 ],
+    "CENTRAL_ROUTER":[ "CENTRAL_ROUTER","10.200.20.10", 11112 ],
+    "RAD_DESK_01":   [ "RAD_DESK_01",   "10.200.20.101", 11114 ],
+    "CORP_VNA":      [ "CORP_VNA",      "10.200.20.60",  11112 ]
+  },
+
+  "DicomModalitiesInDatabase": false,
+
+  "LuaScripts": [
+    "/etc/orthanc/routing_rules.lua"
+  ],
+
+  "Plugins": [],
+  "ConcurrentJobs": 4,
+  "JobsEngineThreadsCount": 4
+}

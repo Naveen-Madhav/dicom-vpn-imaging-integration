@@ -1,0 +1,25 @@
+# ==============================================================================
+# Berkeley Packet Filter (BPF) Capture Filter for DICOM & IPsec Teleradiology
+# Usage with tcpdump: tcpdump -i <interface> -F config/wireshark/dicom_capture.bpf -w telerad.pcap
+# Usage with tshark:  tshark -i <interface> -f "$(cat config/wireshark/dicom_capture.bpf | grep -v '^#')"
+# ==============================================================================
+
+(
+    # Standard DICOM & Alternate DICOM Ports
+    tcp port 104 or tcp port 4242 or tcp port 11112 or tcp port 11114 or tcp port 8042
+)
+or
+(
+    # IPsec IKE Key Negotiation & NAT Traversal
+    udp port 500 or udp port 4500
+)
+or
+(
+    # IPsec Encapsulating Security Payload (ESP Protocol 50)
+    proto 50
+)
+or
+(
+    # ICMP Diagnostic Echo & Path MTU Exceeded (Type 3 Code 4)
+    icmp
+)

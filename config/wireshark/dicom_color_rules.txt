@@ -1,0 +1,14 @@
+# ==============================================================================
+# Wireshark Color Filters for DICOM & Teleradiology
+# Format: @RuleName@FilterExpression@[BackgroundHex,ForegroundHex]
+# ==============================================================================
+
+@DICOM Association Reject@dicom.pdu.type == 0x03@[65535,0,0][65535,65535,65535]
+@DICOM Association Abort@dicom.pdu.type == 0x07@[65535,16000,16000][65535,65535,65535]
+@DICOM Association Request@dicom.pdu.type == 0x01@[40000,55000,65535][0,0,0]
+@DICOM Association Accept@dicom.pdu.type == 0x02@[30000,65535,30000][0,0,0]
+@DICOM C-STORE Error@dicom.command == 0x8001 and dicom.status != 0@[65535,30000,0][65535,65535,65535]
+@DICOM C-STORE Success@dicom.command == 0x8001 and dicom.status == 0@[45000,65535,45000][0,0,0]
+@DICOM C-ECHO Verification@dicom.command == 0x0030 or dicom.command == 0x8030@[65535,65535,35000][0,0,0]
+@TCP Retransmission@tcp.analysis.retransmission@[65535,20000,20000][65535,65535,65535]
+@IPsec ESP Traffic@esp@[50000,40000,65535][65535,65535,65535]
